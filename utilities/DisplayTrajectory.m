@@ -30,7 +30,7 @@ end
 newpos = S.HoP;
 
 %% Immagine con i match
-cla(ax_img);
+cla(ax_img)
 hold(ax_img,'on')
 imshow(img,[],'Parent', ax_img);
 
