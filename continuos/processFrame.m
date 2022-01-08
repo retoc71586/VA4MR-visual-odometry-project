@@ -87,7 +87,7 @@ S.X = S.X.';
 %T_w_c1 = [R, T.'; 0 0 0 1];
 
 % Extract new keyframes
-S = extractKeyframes(S, T_w_c1, img0, img1, K, params);
+S = extractKeyframes(S, T_w_c1, img0, img1, K);
 
 end
 

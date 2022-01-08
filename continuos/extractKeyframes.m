@@ -1,4 +1,4 @@
-function [S] = extractKeyframes(S, T_w_c1, img0, img1, K, params)
+function [S] = extractKeyframes(S, T_w_c1, img0, img1, K)
 %EXTRACTKEYFRAMES takes as input and S.p,S.X as input. 
 %It must return the whole state of the current frame: S.p,S.x,S.C,S.F,S.T.
 
@@ -22,12 +22,8 @@ end
     S.C = round(S.C);
 
 % Create the point tracker
-    %trackerKeyframes = vision.PointTracker('MaxBidirectionalError', 2, 
-    % 'NumPyramidLevels', 6,'MaxIterations', 2000);
-  trackerKeyframes = vision.PointTracker('MaxBidirectionalError', params.lambda, ...
-                                        'NumPyramidLevels', params.num_pyr_levels, ...
-                                        'MaxIterations', params.max_its);
-    
+    trackerKeyframes = vision.PointTracker('MaxBidirectionalError', 2, 'NumPyramidLevels', 6,'MaxIterations', 2000);
+  
 % Initialize the point tracker
     initialize(trackerKeyframes, S.C.', img0);
     
@@ -39,9 +35,14 @@ end
     S.F = double(S.F(:, scores>0.8 & isTracked));
     S.T = S.T(:, scores>0.8 & isTracked);
     
+    
+% Elimino dallo stato i candidate keypoints non tracciati
+%     S.C = imagePoints1(validIdx, :).';
+%     S.F = S.F(: ,validIdx);
+%     S.T = S.T(: ,validIdx);
 
     % [rotationMatrix,translationVector] = cameraPoseToExtrinsics(orientation,location)
-    %params.cam = cameraParameters('IntrinsicMatrix', K.');
+    params.cam = cameraParameters('IntrinsicMatrix', K.');
     
     max_angolo = 30;
     S.cont = 0; %inizializzo
