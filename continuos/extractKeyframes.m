@@ -1,4 +1,4 @@
-function [S] = extractKeyframes(S, T_w_c1, img0, img1, K)
+function [S] = extractKeyframes(S, T_w_c1, img0, img1, K, params)
 %EXTRACTKEYFRAMES takes as input and S.p,S.X as input. 
 %It must return the whole state of the current frame: S.p,S.x,S.C,S.F,S.T.
 
@@ -9,20 +9,24 @@ function [S] = extractKeyframes(S, T_w_c1, img0, img1, K)
 % Angle treshold
 % need to refine threshold
 if max(size(S.p)) > 600
-    angleTreshold = 6;
+    angleTreshold = params.angle_treshold + pi;
 elseif max(size(S.p)) > 500
-    angleTreshold = 5;
+    angleTreshold = params.angle_treshold + pi/2;
 elseif max(size(S.p)) > 400
-    angleTreshold = 4;
+    angleTreshold = params.angle_treshold + pi/4;
 else 
-    angleTreshold = 0.5;
+    angleTreshold = params.angle_treshold;
 end
 
 %% Traccio i keypoints nella sequenza di S.C
     S.C = round(S.C);
 
 % Create the point tracker
-    trackerKeyframes = vision.PointTracker('MaxBidirectionalError', 2, 'NumPyramidLevels', 6,'MaxIterations', 2000);
+    trackerKeyframes = vision.PointTracker(...
+        'MaxBidirectionalError', params.lambda_key,...
+        'NumPyramidLevels', params.num_pyr_levels_key,...
+        'MaxIterations', params.max_its_key, ...
+        'BlockSize', params.bl_size_key);
   
 % Initialize the point tracker
     initialize(trackerKeyframes, S.C.', img0);
@@ -30,19 +34,10 @@ end
 % Track the points
     [imagePoints1, isTracked, scores] = step(trackerKeyframes, img1);
     
-%Per avere meno keypoints faccio sta cosa -Lollo
-    S.C = double(imagePoints1(scores>0.8 & isTracked, :).');
-    S.F = double(S.F(:, scores>0.8 & isTracked));
-    S.T = S.T(:, scores>0.8 & isTracked);
-    
-    
-% Elimino dallo stato i candidate keypoints non tracciati
-%     S.C = imagePoints1(validIdx, :).';
-%     S.F = S.F(: ,validIdx);
-%     S.T = S.T(: ,validIdx);
-
-    % [rotationMatrix,translationVector] = cameraPoseToExtrinsics(orientation,location)
-    params.cam = cameraParameters('IntrinsicMatrix', K.');
+% Eliminate low scores keypoints
+    S.C = double(imagePoints1(scores > params.scores & isTracked, :).');
+    S.F = double(S.F(:, scores > params.scores & isTracked));
+    S.T = S.T(:, scores > params.scores & isTracked);
     
     max_angolo = 30;
     S.cont = 0; %inizializzo
@@ -70,9 +65,6 @@ end
              M1 = cameraMatrix(params.cam, R_c1_w, t_c1_w);
 
             [NewLandmarks, reprojError] = triangulate(p_orig(1:2).',p_curr(1:2).',M0,M1);
-
-            % newlandmark position wrt origin frame
-            %NewLandmarks = linearTriangulation(p_orig,p_curr,M0.',M1.'); 
             
             dist_min = 10e100;
             for num_landm = 1:size(S.X,2)
@@ -81,32 +73,35 @@ end
                     dist_min = dist;
                 end
             end
-            %newLandmwrtcamera = T_w_c1(1:3,1:3).'*NewLandmarks'; %coord del landm rispetto alla camera
+           
 
-            if  reprojError < 1 && dist_min > 3 && norm(NewLandmarks-T_w_c1(1:3,4)) < 50000 %i punti devono stare davanti e non devono esssere troppo lontani nè dietro la fotocamera
+            if  reprojError < 1 && dist_min > 3 && norm(NewLandmarks-T_w_c1(1:3,4)) < 50000 
+                % Points must be positive and not too far from the camera
                 S.X(:,end+1) = NewLandmarks';
                 S.p(:,end+1) = S.C(:,candidate_idx);
                 
                 S.C(:,candidate_idx) = [1, 1]';
                 S.F(:,candidate_idx) = [1, 1]';
 
-                S.cont = S.cont + 1; %contatore che mi dice quanti nuovi keypoints ho aggiunto
+                %counter of how many keypoints I have added --> for
+                %plotting
+                S.cont = S.cont + 1; 
             end
         end
 
     end
 
+
 %% Trovo nuovi candidate keypoints da aggiungere in S.C
 % Detect feature points
 
-    imagePoints1 = detectMinEigenFeatures(img1,'FilterSize',5,'MinQuality', 0.01);
-    imagePoints1 = selectStrongest(imagePoints1,500);
-    imagePoints1 = selectUniform(imagePoints1,500,size(img1));
+    imagePoints1 = detectMinEigenFeatures(img1,'FilterSize',5,'MinQuality', 10e-5);
+    imagePoints1 = selectStrongest(imagePoints1,1000);
+    imagePoints1 = selectUniform(imagePoints1,400,size(img1));
     candidate_keypoints = imagePoints1.Location'; %2xM
 
     
-% Ora devo aggiungere questi nuovi candidati a S.C se non sono già
-% pressenti in S.C o S.p
+% Add this candidates on S.C if they are not in S.C or S.p
     for new_candidate_idx = 1:width(candidate_keypoints)
         if ~ismembertol(candidate_keypoints(:,new_candidate_idx),S.C,1e-4) & ~ismembertol(candidate_keypoints(:,new_candidate_idx),S.p,1e-4)
             % we need to augment the candidate keypoint set

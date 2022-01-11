@@ -1,4 +1,5 @@
-function [S,hist_num_keyp_tot,hist_num_cand] = DisplayTrajectory(T_w_c0, img, S, i, disp,hist_num_keyp_tot,hist_num_cand)
+function [S,hist_num_keyp_tot,hist_num_cand] = DisplayTrajectory(...
+    T_w_c0, img, S, i, disp,hist_num_keyp_tot,hist_num_cand,enableScaling)
 % function to plot trajectory
 
 % Richiamo la funzione di plotting
@@ -30,7 +31,7 @@ end
 newpos = S.HoP;
 
 %% Immagine con i match
-cla(ax_img)
+cla(ax_img);
 hold(ax_img,'on')
 imshow(img,[],'Parent', ax_img);
 
@@ -63,7 +64,9 @@ legend(ax_img,'Candidate Keypoints', 'Newly added Keypoints',...
 hold(ax_img,'off')
 
 
-%% Grafico movimento visto dall'alto
+%% Graph of the movement from the above
+cla(ax_path_landm);
+
 % Current Landm
 plot(S.X(1,:), S.X(3,:),'Marker','.','Parent',ax_path_landm,'Color','b','LineStyle','none','MarkerSize',5);
 hold(ax_path_landm,'on')
@@ -71,8 +74,8 @@ hold(ax_path_landm,'on')
 % All landmarks
 plot(S.HoL(1,:), S.HoL(3,:),'Marker','.','Parent',ax_path_landm,'Color','g','LineStyle','none','MarkerSize',1);
 
-ylim(ax_path_landm,[newpos(end,3)-20, newpos(end,3)+80]);
-xlim(ax_path_landm,[newpos(end,1)-20, newpos(end,1)+20]);
+
+
 
 % Trajectory
 plot(newpos(end+1-min(size(newpos,1),n_keyp):end,1), ...
@@ -83,6 +86,25 @@ plot(newpos(end+1-min(size(newpos,1),n_keyp):end,1), ...
 title(ax_path_landm,'Cameras trajectory in last 50 frames and Landmarks (upside view)')
 legend(ax_path_landm, 'Landmarks being used','Old Landmarks',...
     'Trajectory of last 50 frames', 'Location','northwest','Box','on');
+
+if enableScaling == false
+
+    ylim(ax_path_landm,[newpos(end,3)-80, newpos(end,3)+80]);
+    axis(ax_path_landm, 'equal')
+    xlim(ax_path_landm,[newpos(end,1)-80, newpos(end,1)+80]);
+
+
+else
+    axis(ax_path_landm, 'equal')
+    ylim(ax_path_landm,[newpos(end,3)-60, newpos(end,3)+60]);
+    
+    xlim(ax_path_landm,[newpos(end,1)-40, newpos(end,1)+40]);
+    
+
+end
+
+
+grid(ax_path_landm, 'on')
 
 hold(ax_path_landm,'off')
 
@@ -104,13 +126,14 @@ grid(ax_num_keypoints,'on')
 hold(ax_num_keypoints,'off')
 
 %% Grafico FullTrajectory
+cla(ax_pathfull)
 hold(ax_pathfull,'on')
 plot(newpos(:,1),newpos(:,3),'Parent', ax_pathfull, 'LineWidth', 3,...
     'Color','g'); 
 title(ax_pathfull,'Full Trajectory')
 axis(ax_pathfull, 'equal')
 
-grid(ax_pathfull, 'on')
+%grid(ax_pathfull, 'on')
 hold(ax_pathfull,'off')
 
 end

@@ -53,7 +53,7 @@ params.cam = cameraParameters('IntrinsicMatrix', K.');
 
 %% Bootstrap
 % need to set bootstrap_frames
-bootstrap_frames = [1 4];
+bootstrap_frames = [1 3];
 if ds == 0
     img0 = imread([kitti_path '/05/image_0/' ...
         sprintf('%06d.png',bootstrap_frames(1))]);
@@ -75,18 +75,24 @@ else
     assert(false);
 end
 
-%%%%%%%%%%%%%%%%%% testing on main 
+%[T_w_c, keypoints_img1, landmarks] = twoWiewSFM(img0,img1,params);
 
-[T_w_c, keypoints_img1, landmarks] = initialization(img0, img1, params,eye(3),[0,0,0]);
+[T_w_c, keypoints_img1, landmarks] = ...
+        initialization(img0, img1, params,eye(3),[0,0,0]);
+% To be sure to have enough keypoint, we reinitialize untile the treshold
+% on number of keypoints it's reached
+
+while length(keypoints_img1.') < 50
+    [T_w_c, keypoints_img1, landmarks] = ...
+        initialization(img0, img1, params,eye(3),[0,0,0]);
+end
 
 S.p = keypoints_img1.';
-fprintf('number of keypoints:%d  \n',size(S.p,2));
+fprintf('number of keypoints:%d  \n',length(S.p));
 S.X = landmarks.';
 S.C = S.p;
 S.F = S.p;
-S.T = reshape(T_w_c,[16,1]).*ones(16,height(keypoints_img1));
-       
-%fprintf("ground truth")
+S.T = reshape(T_w_c,[16,1]).*ones(16,height(keypoints_img1)); 
 prev_img = img1;
 
 % Init plotting
@@ -94,15 +100,21 @@ T_w_c0 = [T_w_c; 0 0 0 1];
 PrintPoses(eye(4),'world frame')
 PrintPoses(T_w_c0,'first camera')
 
-% History of camera positions
+% History of camera positions used for plot
 S.HoP = zeros(1,3);
 
-% History of landmarks
+% History of landmarks used for plot
 S.HoL = zeros(3,1);
+%set scaling to 1
+global s
+s = 1;
+s0 = s; %to see when rescaling
+T_first = eye(4);
 %% Continuous operation
+%%%% ADDITIONAL FEATURE, PUT TRUE TO SEE METRIC RESCALING
+enableScaling = false; %%%% enable this to see plot in metric scales
 
 range = (bootstrap_frames(2)+1):1:last_frame;
-
 disp = init_disp_vo(img1);
 hist_num_keyp_tot = 0;
 hist_num_cand = 0;
@@ -122,30 +134,28 @@ for i = range
     else
         assert(false);
     end
+
 % here put functions to plot results : trajectorie, keypoints  and landmarks
 % firstly process frame needs an initialization of S0, according to the
 % dimension requested. This init can be done through initialization (by changing it)
 
-if max(size(S.p)) > 20
+if max(size(S.p)) >= 20
+[S, T_w_c1] = processFrame(S, prev_img, image, K, params);
+T_w_c0 = T_w_c1;
+end
 
-    [S, T_w_c1] = processFrame(S, prev_img, image, K, params);
-    T_w_c0 = T_w_c1;
-
-else
+if max(size(S.p)) < 20
 
     fprintf("reinitialization");
-    [T_w_c, keypoints_img1, landmarks] = ...
-        initialization(prev_img, image, params, eye(3),[0 0 0]);
+    [T_w_c, keypoints_img1, landmarks] = initialization(prev_img, image, params, eye(3),[0 0 0]);
     S.p = keypoints_img1.';
     S.X = landmarks.';
     T_w_c0 = T_w_c0*T_w_c;
     T_w_c0(1:3,1:3) = T_w_c0(1:3,1:3).';
-
     for point = 1:size(S.X,2)
         real_point = T_w_c0*[S.X(:,point);1];
         S.X(:,point) = real_point(1:3);
     end
-
     S.C = S.p;
     S.F = S.p;
     T_w_c0(1:3,1:3) = T_w_c0(1:3,1:3).';
@@ -153,12 +163,47 @@ else
     
 end
 
+if enableScaling == true
+
+    if ds == 0 && i == 40
+        % expire 43
+        T_first = T_w_c0;
+    end
+    if ds == 1 && i == 95
+        T_first = T_w_c0;
+    end
+    if ds == 2 && i == 101
+        T_first = T_w_c0;
+    end
+
+ [s] = CalcScalingFactor(ds, i,  T_w_c0, T_first,s)
+ 
+ T_w_c0(1:3,end) = [T_w_c0(1,end) * s;...
+        T_w_c0(2,end) * s; T_w_c0(3,end) * s]; 
+
+% For malaga and kitty, once the code find the car will eventually
+% recompunte the trajectory in world frame, in metric scale, and it returns back.
+% while this is not visually appealling it is not going sudddely back,
+% but the additional line is due to line connecting new pose and last
+% unscaled pose
+
+ if s ~= s0 && ds == 2
+     % for parking
+     % if I change scale factor I rescale all the trajectories
+     S.HoL = S.HoL.*s/s0;
+     S.HoP = S.HoP.*s/s0;
+     %s = s0;
+ end
+     
+
+end
 
 [S,hist_num_keyp_tot, hist_num_cand] = DisplayTrajectory(T_w_c0, image, S, ...
-    i, disp,hist_num_keyp_tot, hist_num_cand);
+    i, disp,hist_num_keyp_tot, hist_num_cand,enableScaling);
 prev_img = image;
+
 % Makes sure that plots refresh.    
-pause(0.2);
+pause(0.1);
 
 
 

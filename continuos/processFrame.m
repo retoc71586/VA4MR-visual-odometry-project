@@ -20,10 +20,7 @@ function [S, T_w_c1] = processFrame(S0, img0, img1, K,params)
 % [x1,   x2,   ..., xk]     % but each landmark is associated (index-wise) to the relative p1_i 
 
 % we will use a struct 'S' with fields p and X
-% k = width(S0.p); % number of matches
-% S.p = zeros(2,k); % 2d coordinates
-% S.X = zeros(3,k); % 3d landmarks coordinates
-%k = width(S0.C);
+
 S.C = S0.C;
 S.F = S0.F;
 S.T = S0.T;
@@ -38,24 +35,41 @@ pointTracker = vision.PointTracker('MaxBidirectionalError', params.lambda, ...
                                    'MaxIterations', params.max_its);
 initialize(pointTracker,S0.p.',img0)
 setPoints(pointTracker,S0.p.'); 
+%[points1,points1_validity] = pointTracker(img1);
+
 
 %Roba per non dover avere troppi keypoints -Lollo
-[trackedKeypoints, isTracked] = step(pointTracker, img1);
+[trackedKeypoints, isTracked, scores] = step(pointTracker, img1);
 
-S.p = trackedKeypoints(isTracked,:).';
-S.X = S0.X(:,isTracked);
+S.p = trackedKeypoints(scores >params.scores & isTracked,:).';
+S.X = S0.X(:,scores > params.scores  & isTracked);
 
-% estimateWorldCameraPose is a matlab func that requires double or single inputs
+% Some figure to see interpassages
+if figures
+    figure (4)
+    subplot(2,1,1)
+    showMatchedFeatures(...
+        img0, img1, S0.p(:,scores>0.8 & isTracked).',S.p.');
+    figure(4)
+    subplot(2,1,2)
+    imshow(img0,[]); hold on
+    plot(S.C(1,:), S.C(2,:),'ob'); hold off
+    pause(0.1)
+end
+
+% estimateWorldCameraPose is a matlab func 
+% that requires double or single inputs
 S.p = double(S.p);
 S.X = double(S.X);
-
-fprintf('numero keypoints:%d  \n',length(S.p));
 
 % Estimate the camera pose in the world coordinate system
 [R, T, best_inlier_mask, status] = estimateWorldCameraPose(S.p.', S.X.', params.cam, ...
                                 'MaxNumTrials', params.max_num_trials, ...
                                 'Confidence', params.conf, ...
                                 'MaxReprojectionError', params.max_repr_err);
+
+% Status is a variable that tells if p3p went good or has internal errors
+% print it for debugging
 
 % cut the list of keypoints-landmark deleting outliers
 S.p = S.p(:,best_inlier_mask);
@@ -65,6 +79,17 @@ S.X = S.X(:,best_inlier_mask);
 T_w_c1 = [R, T.'; 0 0 0 1];
 
 % Extract new keyframes
-S = extractKeyframes(S, T_w_c1, img0, img1, K);
+S = extractKeyframes(S, T_w_c1, img0, img1, K, params);
+
+% Review number of keypoints
+fprintf('numero keypoints:%d  \n',length(S.p));
+
+% verify correctness of p3p output
+if any(isnan(T_w_c1), 'all')
+    fprintf('p3p status: %d\n',status);
+    fprintf('T_W_C:');
+    %pause 
+end
+
 
 end

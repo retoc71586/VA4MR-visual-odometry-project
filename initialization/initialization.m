@@ -4,7 +4,7 @@ function [T, matchedPoints2, landmarks] = initialization(img1, img2, params,R0,t
 % Function to bootstraps the initial camera poses.
 % input --> the 2 images as GRAYSCALE and a struct of params
 % output --> the transoformation from the 2 cameras frames
-% Made as part of the programming assignement
+% Made by Roberto Pellerito as part of the programming assignement
 % for Vision Algoritms for Mobile Robotics course, autumn 2021. ETH Zurich
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -20,20 +20,17 @@ function [T, matchedPoints2, landmarks] = initialization(img1, img2, params,R0,t
 [p0,p1] = matchDescriptors(validpoints1,validpoints2,features1,features2, params);
 [R,t,inlinerP1,inlinerP2] = findInitialPose(p0, p1, params);
 
-T = [R,t.'; 0 0 0 1]
-
-
 [R_I_w,t_I_w] = cameraPoseToExtrinsics(R0,t0);
 M0 = cameraMatrix(params.cam, R_I_w, t_I_w);
 
 [R_c1_w,t_c1_w] = cameraPoseToExtrinsics(R0'*R,t+t0);
 M1 = cameraMatrix(params.cam, R_c1_w, t_c1_w);
 
-T = [R*R0, (t+t0).';
-     0, 0, 0, 1     ]
+fprintf("\n Initialization transform \n");
+%T = [R, t.'; 0, 0, 0, 1]
+T = [R*R0, (t+t0).'; 0, 0, 0, 1]
 
-[landmarks, reprojError] = triangulate(inlinerP1,inlinerP2,M0,M1);
-matchedPoints2 = inlinerP2.Location;
-matchedPoints2 = inlinerP2.Location(reprojError<=1,:);
-landmarks = landmarks(reprojError<=1,:);
+[landmarks, reprojError, valididx] = triangulate(inlinerP1,inlinerP2,M0,M1);
+matchedPoints2 = inlinerP2.Location(reprojError<=1 & valididx,:);
+landmarks = landmarks(reprojError<=1 & valididx,:);
 
